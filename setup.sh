@@ -14,6 +14,6 @@ mkdir -p data                      # created by you, so the container (user id 1
 if [ ! -f .env ]; then
   cp .env.example .env
   chmod 600 .env
-  echo "Created .env: open it and fill in ANTHROPIC_API_KEY, JWT_SECRET, INVITE_CODE and DOMAIN."
+  echo "Created .env: open it and fill in ANTHROPIC_API_KEY, JWT_SECRET and DOMAIN."
 fi
 echo "Next:  docker compose up -d --build"

@@ -18,7 +18,7 @@ Everything that must survive a restart (database, recordings, slides, transcript
 2. In this folder:
    ```bash
    ./setup.sh                  # clones the two code repositories if they are missing, creates data/ and .env
-   nano .env                   # ANTHROPIC_API_KEY, JWT_SECRET (openssl rand -hex 32), INVITE_CODE, and for a local test:
+   nano .env                   # ANTHROPIC_API_KEY, JWT_SECRET (openssl rand -hex 32), and for a local test:
    #   DOMAIN=localhost
    #   HTTP_PORT=8080
    #   HTTPS_PORT=8443
@@ -30,7 +30,7 @@ Everything that must survive a restart (database, recordings, slides, transcript
 3. Check every feature (the API check creates throw-away users and deletes them):
    ```bash
    cd lecturekit-server
-   .venv/bin/python scripts/api_check.py --url https://localhost:8443 --insecure --invite <INVITE_CODE> \
+   .venv/bin/python scripts/api_check.py --url https://localhost:8443 --insecure \
        --recording ../lecturekit/data/L02/media.mp4 --slides ../lecturekit/data/L02/slides.pdf
    ```
    Without `--recording` only the checks that need no AI run. Interactive API docs: `https://localhost:8443/api/docs`.
@@ -92,7 +92,7 @@ or on the server with git: `git clone <the platform repository URL> /opt/lecture
 cd /opt/lecturekit
 mkdir -p data                              # created by you (user id 1000 on Ubuntu), so the container can write to it
 cp .env.example .env && chmod 600 .env
-nano .env                                  # DOMAIN, ANTHROPIC_API_KEY, JWT_SECRET, INVITE_CODE (Ctrl+O, Enter, Ctrl+X)
+nano .env                                  # DOMAIN, ANTHROPIC_API_KEY, JWT_SECRET (Ctrl+O, Enter, Ctrl+X)
 openssl rand -hex 32                       # use this output as JWT_SECRET
 ```
 In `.env` also set `APP_MEM_LIMIT` below the server's RAM (for example `3g` on a 4 GB server). If your user is not id 1000 (`id -u`):
@@ -115,15 +115,15 @@ Caddy gets the certificate by itself the first time (ports 80 and 443 open, the 
 1. Register the first account:
    ```bash
    curl -X POST https://<your-domain>/api/auth/register -H 'Content-Type: application/json' \
-        -d '{"email":"you@example.com","password":"a long password","invite_code":"<INVITE_CODE>"}'
+        -d '{"email":"you@example.com","password":"a long password"}'
    ```
 2. From your own computer run the checks against the server with the 14-minute test lecture and its slides (this also checks the stage progress,
    notes, quiz, live chunks and deleting):
    ```bash
    cd lecturekit-server
-   .venv/bin/python scripts/api_check.py --url https://<your-domain> --invite <INVITE_CODE> \
+   .venv/bin/python scripts/api_check.py --url https://<your-domain> \
         --recording lecture14.mp4 --slides slides.pdf --clip-seconds 840
-   .venv/bin/python scripts/smoke.py --url https://<your-domain> --invite <INVITE_CODE> --recording lecture14.mp4 --slides slides.pdf
+   .venv/bin/python scripts/smoke.py --url https://<your-domain> --recording lecture14.mp4 --slides slides.pdf
    ```
    The smoke test prints each stage and the time. For the live path add `--live --end 600` (run it with `PYTHONPATH=../lecturekit`).
 
@@ -169,7 +169,7 @@ A job running during the restart is marked `failed: server_restarted`; the user 
 - [ ] CORS allows only the web origin and the extension origin (`WEB_ORIGIN`, `EXTENSION_ORIGIN`; same-origin needs neither)
 - [ ] upload limits are enforced by Caddy (total size) and by the server (type and size per kind)
 - [ ] the API key never goes to a client; the Claude API receives transcript and slide text only, never audio or video
-- [ ] share the invite code only with people you want as users; change `INVITE_CODE` and run `docker compose up -d` to close registration
+- [ ] registration is open: anyone who knows the address can create an account (5 lectures per day each), so share the address only with the people you want as users
 - [ ] the per-user daily limit (`DAILY_LIMIT`, default 5) protects your Claude credit; keep auto-reload off in the Anthropic console
 
 Owner commands: `docker compose exec app python -m server.admin list-users` and
@@ -181,7 +181,7 @@ Owner commands: `docker compose exec app python -m server.admin list-users` and
 |---|---|
 | `https://<domain>` shows a certificate error | the name does not point at the server yet, or port 80 or 443 is blocked (also at the provider). Fix DNS or the firewall, then `docker compose restart caddy` |
 | `/health` shows a missing tool | the image build was incomplete: `docker compose build --no-cache app` |
-| `app` keeps restarting | `docker compose logs app`: a missing `JWT_SECRET` (32+ characters) or `INVITE_CODE` is the usual cause |
+| `app` keeps restarting | `docker compose logs app`: a missing `JWT_SECRET` (32+ characters) is the usual cause |
 | Upload fails with 413 | file larger than the Caddy or server limit: raise `MAX_RECORDING_MB` in `.env` **and** `max_size` in `Caddyfile` together, then `docker compose up -d` |
 | A job stays "queued" | the worker is busy with a long job (one at a time), or the app restarted: `docker compose logs app` |
 | A lecture shows "The AI service failed" | missing key, no credit, rate limit or no outgoing network: check `.env` and the Anthropic console, then retry the lecture |
@@ -196,7 +196,7 @@ Owner commands: `docker compose exec app python -m server.admin list-users` and
 
 - [ ] `docker compose up -d` works from a clean server in under 15 minutes following this guide
 - [ ] `https://<domain>/health` ok; certificate valid
-- [ ] register with the invite code; registration without it fails
+- [ ] register a new account works
 - [ ] the 14-minute lecture with slides: stage progress shown, notes and quiz appear, speed recorded (section B9)
 - [ ] quiz answers not visible before submitting; an attempt shows score and explanations
 - [ ] a second account cannot see the first account's data
