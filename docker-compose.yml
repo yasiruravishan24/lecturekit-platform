@@ -1,10 +1,11 @@
-# LectureKit, everything in Docker. From this folder:   docker compose up -d --build
+# LectureKit, everything in Docker (DOCKER_DEPLOYMENT_PLAN.md). From this folder:   docker compose up -d --build
 #
-#   caddy  (ports 80/443)  HTTPS and routing:  /api/* and /health -> app,  everything else -> the web app (later)
-#   app    (not exposed)   the FastAPI server + worker + ffmpeg, Tesseract, LibreOffice, Whisper;
-#                          its database is the SQLite file data/server.db (no separate database container)
+#   caddy  (ports 80/443)  the only part open to the internet: HTTPS certificate, upload limit, forwards to app
+#   app    (not exposed)   one Python process: FastAPI server + job worker (one job at a time) + the lecturekit pipeline
+#                          (Whisper, ffmpeg, Tesseract, LibreOffice) + the built web app files (once there is a web app).
+#                          Its database is the SQLite file data/server.db (no separate database container).
 #
-# Adding the web app later = uncomment the `web` service below and the `reverse_proxy web:80` line in Caddyfile.
+# Everything that must survive a restart lives in ./data. Secrets live in .env only.
 name: lecturekit
 
 services:
@@ -12,15 +13,21 @@ services:
     build:
       context: .
       dockerfile: docker/app.Dockerfile
+      args:
+        WITH_LIBREOFFICE: ${WITH_LIBREOFFICE:-1}
     image: lecturekit-app
     env_file: .env
     environment:
       DATA_DIR: /data
+      LK_DATA: /data/lk
+      LK_CACHE: /data/cache
+      LK_LOG: /data/logs
     volumes:
       - ./data:/data              # database, uploads, results, cache, logs: back this folder up
-    restart: unless-stopped
     expose:
-      - "8000"
+      - "8000"                    # reachable by caddy only, never published to the internet
+    restart: unless-stopped
+    mem_limit: ${APP_MEM_LIMIT:-6g}   # keep below the server's RAM (for example 3g on a 4 GB server)
 
   caddy:
     image: caddy:2
@@ -34,16 +41,9 @@ services:
       DOMAIN: ${DOMAIN:?set DOMAIN in .env}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
+      - caddy_data:/data           # the certificates: do not delete this volume
       - caddy_config:/config
     restart: unless-stopped
-
-  # web:                                   # the web app as static files in a tiny nginx container
-  #   build:
-  #     context: ./web                     # a folder with its own Dockerfile that builds and serves dist/
-  #   restart: unless-stopped
-  #   expose:
-  #     - "80"
 
 volumes:
   caddy_data:

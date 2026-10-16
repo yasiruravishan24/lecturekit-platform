@@ -1,170 +1,216 @@
 # DEPLOY.md: running LectureKit with Docker (written for a beginner)
 
-One command starts everything: `docker compose up -d --build`. Two containers run:
+Follows `DOCKER_DEPLOYMENT_PLAN.md`. One rented Linux server runs Docker Compose with two containers:
 
 | Container | What it does |
 |---|---|
-| `app` | the FastAPI server and its worker, with ffmpeg, Tesseract, LibreOffice and the Whisper model inside. The **database is SQLite**: the file `data/server.db`, so there is no separate database container. |
-| `caddy` | HTTPS (certificates are obtained and renewed automatically) and routing: `/api/*` and `/health` go to `app`; everything else goes to the web app, once it exists. |
+| `caddy` | the only part open to the internet (ports 80 and 443): HTTPS certificate (obtained and renewed by itself), upload size limit, forwards everything to `app` |
+| `app` | one Python process: the FastAPI server, the job worker (one job at a time), the pipeline (Whisper, ffmpeg, Tesseract, LibreOffice) and, later, the web app files. The **database is SQLite**: the file `data/server.db`, so there is no database container. |
 
-Everything you must keep (database, uploads, notes, logs) is in the `data/` folder next to `docker-compose.yml`.
+Everything that must survive a restart (database, recordings, slides, transcripts, notes, cache, logs) is in the `data/` folder next to
+`docker-compose.yml`. Secrets are only in the `.env` file next to it. The only outside service the app calls is the Claude API, with text only.
 
-## A. Try it on your own computer first
+---
+
+## A. Try it on your own computer first (about 30 minutes, mostly waiting)
 
 1. Start Docker Desktop and wait until it says it is running.
 2. In this folder:
    ```bash
-   ./setup.sh                  # clones the two code repositories if they are not here yet, creates data/ and .env
-   nano .env                   # fill in the four lines at the top (see below), and add these two for a local test:
+   ./setup.sh                  # clones the two code repositories if they are missing, creates data/ and .env
+   nano .env                   # ANTHROPIC_API_KEY, JWT_SECRET (openssl rand -hex 32), INVITE_CODE, and for a local test:
    #   DOMAIN=localhost
    #   HTTP_PORT=8080
    #   HTTPS_PORT=8443
-   docker compose up -d --build        # first time: 10 to 20 minutes (LibreOffice and the Whisper model are large)
-   docker compose ps                   # both should be "running", app "healthy"
+   docker compose up -d --build        # first time: 10 to 20 minutes
+   docker compose ps                   # app "healthy", caddy "running"
    curl -k https://localhost:8443/health
    ```
    (`-k` because the certificate for `localhost` comes from Caddy's own local authority.)
-3. Check the whole flow with the 14-minute test lecture (needs the API key in `.env`):
+3. Check every feature (the API check creates throw-away users and deletes them):
    ```bash
    cd lecturekit-server
-   .venv/bin/python scripts/smoke.py --url https://localhost:8443 --insecure --invite <INVITE_CODE> \
-        --recording lecture14.mp4 --slides slides.pdf
+   .venv/bin/python scripts/api_check.py --url https://localhost:8443 --insecure --invite <INVITE_CODE> \
+       --recording ../lecturekit/data/L02/media.mp4 --slides ../lecturekit/data/L02/slides.pdf
    ```
+   Without `--recording` only the checks that need no AI run. Interactive API docs: `https://localhost:8443/api/docs`.
 4. Stop: `docker compose down` (the data stays in `data/`).
 
-What goes in `.env`: `ANTHROPIC_API_KEY` (your Claude key), `JWT_SECRET` (32+ random characters:
-`openssl rand -hex 32`), `INVITE_CODE` (any phrase; people need it to register), `DOMAIN`.
+---
 
-## B. Put it on the internet
+## B. First deployment on a rented server (the steps you run)
 
-| Thing | Suggestion |
-|---|---|
-| Server | Ubuntu 22.04 or 24.04, **4 vCPU, 8 GB RAM, 40 GB disk** (minimum 2 vCPU, 4 GB, 40 GB). Any provider. |
-| Domain | a free DuckDNS name (https://www.duckdns.org) pointing at the server's IP address |
+I cannot log in to your server from the workspace, so these steps are yours. Everything was tested locally first (section A).
 
-### 1. Create the server and point the domain at it
-1. Create the Ubuntu server and note its **public IP**. Log in: `ssh <user>@<ip>`.
-2. DuckDNS: sign in, create a name (for example `mylectures`), set its IP to the server's IP: `mylectures.duckdns.org`.
-3. Open the firewall (keep SSH):
-   ```bash
-   sudo ufw allow 22 && sudo ufw allow 80 && sudo ufw allow 443 && sudo ufw --force enable
-   ```
-   (Also open ports 80 and 443 on your provider's own firewall page, if it has one.)
+**Server:** Ubuntu LTS (22.04 or 24.04), minimum 2 vCPU, 4 GB RAM, 40 GB disk; recommended **4 vCPU, 8 GB RAM, 80 GB disk**. Any provider
+that gives a plain Ubuntu server with a public IP (a few to about fifteen US dollars a month). Whisper `small` runs on the CPU and needs
+about 1 to 2 GB of RAM while it runs; LibreOffice and big uploads need headroom; recordings take disk space.
+**Speed:** the laptop ran the whole pipeline at 0.19 x the lecture length; a shared-CPU server will be slower (expect 0.5 to 1 x).
+Measure it on day one and write it into the table at the end of this section.
 
-### 2. Install Docker (once)
+### 1. Server and domain
+1. Create the server and note its **public IP address**.
+2. DuckDNS (https://www.duckdns.org): sign in, create a name (for example `mylectures`) and set its IP to the server's IP.
+   Your domain is `mylectures.duckdns.org`. (Your own domain works too: an `A` record pointing at the IP.)
+
+### 2. Log in, a non-root user, firewall (do this before anything else)
+```bash
+ssh root@<ip>                                          # or the user your provider gave you
+adduser deploy && usermod -aG sudo deploy              # a normal user for daily work
+# from YOUR computer, in a second terminal, copy your SSH key to it, and check that this login works:
+#   ssh-copy-id deploy@<ip>   then   ssh deploy@<ip>
+# only after that works, on the server, turn off password logins (SSH by key only):
+sudo sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config && sudo systemctl restart ssh
+sudo ufw allow OpenSSH && sudo ufw allow 80 && sudo ufw allow 443 && sudo ufw --force enable     # only SSH, 80 and 443
+sudo apt-get update && sudo apt-get install -y unattended-upgrades                               # security updates by themselves
+```
+(Also open ports 80 and 443 on your provider's own firewall page, if it has one.)
+
+### 3. Install Docker and the Compose plugin
 ```bash
 curl -fsSL https://get.docker.com | sudo sh
-sudo usermod -aG docker $USER        # then log out and in again
+sudo usermod -aG docker $USER            # then log out and in again
 docker --version && docker compose version
 ```
 
-### 3. Get the code onto the server
-Either, from your own computer (works with private repositories, nothing to log in to):
+### 4. Put the project in `/opt/lecturekit`
+```bash
+sudo mkdir -p /opt/lecturekit && sudo chown $USER:$USER /opt/lecturekit
+```
+Then, from your own computer (works with private repositories; nothing to log in to):
 ```bash
 cd ~/Documents/Degree/Research/project
-rsync -av --exclude '.venv' --exclude 'data' --exclude 'storage' --exclude 'logs' --exclude '.cache' \
+rsync -av --exclude '.venv' --exclude 'data' --exclude 'backups' --exclude 'storage' --exclude 'logs' --exclude '.cache' \
       --exclude 'testing_result' --exclude 'dev_data' --exclude '.env' --exclude '__pycache__' --exclude 'node_modules' \
-      ./ <user>@<ip>:~/app/
+      ./ deploy@<ip>:/opt/lecturekit/
 ```
-or, on the server, with git: `git clone <this repository's URL> ~/app && cd ~/app && ./setup.sh`
-(private repositories need a GitHub login or token on the server).
-Never copy a `.env` file: you create a new one on the server.
+or on the server with git: `git clone <the platform repository URL> /opt/lecturekit && cd /opt/lecturekit && ./setup.sh`
+(private repositories need a GitHub login or token on the server). **Never copy a `.env` file**: you create a new one on the server.
 
-### 4. Configure
+### 5. Configure
 ```bash
-cd ~/app
-mkdir -p data                        # the container runs as user id 1000; create it as your own user (id 1000 on Ubuntu)
+cd /opt/lecturekit
+mkdir -p data                              # created by you (user id 1000 on Ubuntu), so the container can write to it
 cp .env.example .env && chmod 600 .env
-nano .env                            # ANTHROPIC_API_KEY, JWT_SECRET, INVITE_CODE, DOMAIN (Ctrl+O, Enter, Ctrl+X)
+nano .env                                  # DOMAIN, ANTHROPIC_API_KEY, JWT_SECRET, INVITE_CODE (Ctrl+O, Enter, Ctrl+X)
+openssl rand -hex 32                       # use this output as JWT_SECRET
 ```
-If your user is not id 1000 (`id -u`), run `sudo chown -R 1000:1000 data`.
+In `.env` also set `APP_MEM_LIMIT` below the server's RAM (for example `3g` on a 4 GB server). If your user is not id 1000 (`id -u`):
+`sudo chown -R 1000:1000 data`.
 
-### 5. Build and start
+### 6. Build and start
 ```bash
-docker compose up -d --build         # first time: 10 to 20 minutes
-docker compose ps
-curl https://<your-domain>/health    # {"ok":true,...}
+docker compose build                       # first time: several minutes (it downloads the Whisper model too)
+docker compose up -d
+docker compose ps                          # app "healthy", caddy "running"
 ```
-Caddy gets the HTTPS certificate by itself (ports 80 and 443 must be open and the domain must point at the server).
 
-### 6. First checks
+### 7. Check the health
+```bash
+curl https://<your-domain>/health          # {"ok":true,...}: tools present, key set, no secrets shown
+```
+Caddy gets the certificate by itself the first time (ports 80 and 443 open, the domain pointing at the server).
+
+### 8. First real use
 1. Register the first account:
    ```bash
    curl -X POST https://<your-domain>/api/auth/register -H 'Content-Type: application/json' \
         -d '{"email":"you@example.com","password":"a long password","invite_code":"<INVITE_CODE>"}'
    ```
-2. From your own computer, run the smoke test with the 14-minute lecture and its slides:
+2. From your own computer run the checks against the server with the 14-minute test lecture and its slides (this also checks the stage progress,
+   notes, quiz, live chunks and deleting):
    ```bash
-   cd lecturekit-server && .venv/bin/python scripts/smoke.py --url https://<your-domain> --invite <INVITE_CODE> \
-        --recording lecture14.mp4 --slides slides.pdf
+   cd lecturekit-server
+   .venv/bin/python scripts/api_check.py --url https://<your-domain> --invite <INVITE_CODE> \
+        --recording lecture14.mp4 --slides slides.pdf --clip-seconds 840
+   .venv/bin/python scripts/smoke.py --url https://<your-domain> --invite <INVITE_CODE> --recording lecture14.mp4 --slides slides.pdf
    ```
-   It prints each stage and the time; **write the total in the table below**.
-   For the live (chunk) path add `--live --end 600` (run it with `PYTHONPATH=../lecturekit`).
-3. Look at the logs: `docker compose logs app | tail -50` and `grep -c sk-ant data/logs/*` (must print 0 for each file).
+   The smoke test prints each stage and the time. For the live path add `--live --end 600` (run it with `PYTHONPATH=../lecturekit`).
 
-| Measurement (fill in on the real server) | Value |
+### 9. Write the measured speed here
+
+| Measurement | Value |
 |---|---|
-| Server size | |
-| 14-minute lecture with slides, whole file: seconds after upload until done | (laptop M3 Pro: about 190 s, ratio 0.22) |
-| Same, live chunks (seconds after the last chunk) | |
+| Server (provider, vCPU, RAM) | |
+| 14-minute lecture with slides, whole file: seconds from upload to done | (laptop M3 Pro: about 190 s, ratio 0.22) |
+| The same with live chunks: seconds from the last chunk to done | |
 
-## C. Everyday commands
+---
+
+## C. Updating
 
 ```bash
-docker compose logs -f app                       # watch the server
-docker compose restart app                       # restart (unfinished jobs are marked failed: "server_restarted"; users retry)
-docker compose exec app python -m server.admin list-users
-docker compose exec app python -m server.admin set-password someone@example.com     # forgotten password
-git pull (in lecturekit-server) && docker compose up -d --build      # update after new code
-docker compose down                              # stop everything (data stays in ./data)
+cd /opt/lecturekit
+git pull                      # or copy the new files with rsync again
+docker compose build app
+docker compose up -d          # restarts only what changed; ./data is untouched
 ```
+A job running during the restart is marked `failed: server_restarted`; the user presses retry. Update when nobody is processing a lecture.
 
-## D. Backups (do this before the viva)
+## D. Backups and housekeeping
 
-Everything that matters is in `data/`:
-```bash
-# once, by hand, from your own computer
-scp -r <user>@<ip>:~/app/data ./lecturekit-backup-$(date +%F)
-# or a daily copy on the server (crontab -e):
-0 3 * * * tar czf ~/backup-$(date +\%F).tgz -C ~/app data && find ~ -maxdepth 1 -name 'backup-*.tgz' -mtime +7 -delete
-```
-Large recordings are deleted `KEEP_MEDIA_DAYS` (default 7) days after a lecture is done; notes, quiz and transcript stay.
+- **Backup:** `./backup.sh` makes a consistent copy of the SQLite database (SQLite's own backup, safe while the server runs) and packs `data/`
+  into `backups/lecturekit-<date>.tgz`. Copy that file to another machine: `scp deploy@<ip>:/opt/lecturekit/backups/*.tgz .`
+  Daily on the server (`crontab -e`): `0 3 * * * cd /opt/lecturekit && ./backup.sh && find backups -name '*.tgz' -mtime +7 -delete`
+- **Restore:** unpack the `.tgz` in a fresh folder next to `docker-compose.yml`, run `mv data/backup.db data/server.db`, then `docker compose up -d`.
+- **Disk:** the server removes the large recording `KEEP_MEDIA_DAYS` (default 7) days after a lecture is done; notes, quiz and transcript stay.
+  Check `df -h` weekly during the viva period.
+- **Logs:** `data/logs` (lecturekit logs and one line per request, no bodies and no secrets); `docker compose logs -f app` for live output.
+- **Restart:** both services use `restart: unless-stopped`, so they come back after a server reboot.
+- **Certificates:** renewed by Caddy; the `caddy_data` volume must not be deleted.
 
-## E. Adding the web app later
+## E. Security checklist
 
-1. Put the web app in `web/` here, with a `Dockerfile` that builds it and serves the built files with nginx on port 80.
-2. In `docker-compose.yml` uncomment the `web:` service.
-3. In `Caddyfile` replace the `respond ...` line with `reverse_proxy web:80`.
-4. `docker compose up -d --build`. Nothing else changes: the API stays at `/api`, the database and data stay as they are.
+- [ ] only ports 22, 80 and 443 are open; port 8000 is not published (the compose file only `expose`s it to Caddy)
+- [ ] `.env` is `chmod 600`, not in git, not in the image, not printed in logs or `/health`
+- [ ] `JWT_SECRET` is random and at least 32 characters (the server refuses to start otherwise)
+- [ ] the app container runs as a normal user, not root
+- [ ] SSH by key only (password logins off) and `unattended-upgrades` installed (section B2)
+- [ ] CORS allows only the web origin and the extension origin (`WEB_ORIGIN`, `EXTENSION_ORIGIN`; same-origin needs neither)
+- [ ] upload limits are enforced by Caddy (total size) and by the server (type and size per kind)
+- [ ] the API key never goes to a client; the Claude API receives transcript and slide text only, never audio or video
+- [ ] share the invite code only with people you want as users; change `INVITE_CODE` and run `docker compose up -d` to close registration
+- [ ] the per-user daily limit (`DAILY_LIMIT`, default 5) protects your Claude credit; keep auto-reload off in the Anthropic console
 
-## F. If something goes wrong
+Owner commands: `docker compose exec app python -m server.admin list-users` and
+`docker compose exec app python -m server.admin set-password someone@example.com` (forgotten password).
+
+## F. Troubleshooting
 
 | Symptom | Likely cause and fix |
 |---|---|
-| `https://<domain>` does not load, Caddy log says "challenge failed" | the domain does not point at the server yet, or ports 80/443 are closed (also at the provider). Check with `curl http://<ip>`. |
+| `https://<domain>` shows a certificate error | the name does not point at the server yet, or port 80 or 443 is blocked (also at the provider). Fix DNS or the firewall, then `docker compose restart caddy` |
+| `/health` shows a missing tool | the image build was incomplete: `docker compose build --no-cache app` |
 | `app` keeps restarting | `docker compose logs app`: a missing `JWT_SECRET` (32+ characters) or `INVITE_CODE` is the usual cause |
-| "database is locked" or odd file errors on a Mac | SQLite on Docker Desktop's shared folders can misbehave; on a Linux server it does not. Test the stack on the server, or tell me. |
-| Upload fails with 413 | file above `MAX_RECORDING_MB` (1500); raise it in `.env` **and** `max_size` in `Caddyfile`, then `docker compose up -d` |
-| A lecture shows "The AI service failed" | Claude API key wrong or no credit: check the console, then retry the lecture |
+| Upload fails with 413 | file larger than the Caddy or server limit: raise `MAX_RECORDING_MB` in `.env` **and** `max_size` in `Caddyfile` together, then `docker compose up -d` |
+| A job stays "queued" | the worker is busy with a long job (one at a time), or the app restarted: `docker compose logs app` |
+| A lecture shows "The AI service failed" | missing key, no credit, rate limit or no outgoing network: check `.env` and the Anthropic console, then retry the lecture |
 | "ffmpeg could not read this file" | the recording is damaged or has no audio track |
-| Out of disk | `docker system prune -af` (unused images only), delete data you do not need, `df -h` |
+| Out of memory during Whisper | server too small or `APP_MEM_LIMIT` too low: use 8 GB, or `LK_WHISPER_SIZE=base` |
+| Disk full | old recordings: lower `KEEP_MEDIA_DAYS`, delete old sessions, `docker system prune` (unused images), enlarge the disk |
 | Permission denied on `data/` | `sudo chown -R 1000:1000 data` |
+| PowerPoint or Word slides are refused | the image was built with `WITH_LIBREOFFICE=0`; upload the slides as PDF or rebuild with it set to 1 |
+| "database is locked" on a Mac | SQLite on Docker Desktop's shared folders can misbehave; a Linux server does not (it worked in the local tests) |
 
-## G. Security checklist
+## G. Acceptance checklist (before the viva)
 
-- `.env` exists only on the server (`chmod 600`), is never committed, never copied by rsync.
-- Port 8000 is not published: only Caddy (80/443) is reachable from outside.
-- Share the invite code only with people you want as users; change `INVITE_CODE` and `docker compose up -d` to close registration to newcomers.
-- Daily limit per user: `DAILY_LIMIT` (default 5 lectures), because every lecture costs Claude credit. Keep auto-reload off in the Anthropic console and watch the balance.
+- [ ] `docker compose up -d` works from a clean server in under 15 minutes following this guide
+- [ ] `https://<domain>/health` ok; certificate valid
+- [ ] register with the invite code; registration without it fails
+- [ ] the 14-minute lecture with slides: stage progress shown, notes and quiz appear, speed recorded (section B9)
+- [ ] quiz answers not visible before submitting; an attempt shows score and explanations
+- [ ] a second account cannot see the first account's data
+- [ ] restart the server while idle: the data is still there; restart during a job: the job shows failed (`server_restarted`) and retry works
+- [ ] the extension (if built) records a short test in chunks and finishes
+- [ ] a backup of `data/` restored on another machine opens correctly
+- [ ] no secrets in `docker compose logs`, in the image (`docker history`) or in git
 
-## H. Acceptance checklist (manual)
+`scripts/api_check.py` covers most of these automatically (see section A and B8).
 
-- [ ] `https://<domain>/health` ok, shows `ANTHROPIC_API_KEY: true` and `queue_length: 0`
-- [ ] register with the invite code; a wrong code is refused; login works
-- [ ] upload the 14-minute lecture with its slides; the stage progress moves (transcribe, align, filter, notes, quiz)
-- [ ] read the notes; the quiz shows no answers; submit the quiz and see the score, correct answers and explanations
-- [ ] export the notes as Markdown
-- [ ] repeat with live chunks (`--live`)
-- [ ] a second account cannot see the first account's lectures
-- [ ] delete the session (its files disappear from `data/users/<id>/sessions`)
-- [ ] `grep -c sk-ant data/logs/*` prints 0 for every file
+## H. Adding the web app later
+
+1. Put the web app in `lecturekit-server/web/`.
+2. In `docker/app.Dockerfile` uncomment the Node build stage at the top and the `COPY --from=web` line, and in
+   `docker/app.Dockerfile.dockerignore` allow `lecturekit-server/web` (without `node_modules`).
+3. `docker compose build app && docker compose up -d`. The server then serves the app at `/` and the API stays at `/api`: one address,
+   one certificate, no CORS. The database and the data stay as they are.

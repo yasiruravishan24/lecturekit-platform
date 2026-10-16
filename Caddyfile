@@ -3,20 +3,15 @@
 {$DOMAIN} {
 	encode gzip
 
-	# must be larger than MAX_RECORDING_MB in .env (default 1500)
+	# must be larger than MAX_RECORDING_MB in .env (default 1500), a little more for the form data around the file
 	request_body {
 		max_size 1600MB
 	}
 
-	handle /api/* {
-		reverse_proxy app:8000
-	}
-	handle /health {
-		reverse_proxy app:8000
-	}
-
-	handle {
-		# the web app goes here later:   reverse_proxy web:80
-		respond "LectureKit API is running. The web app is not installed yet. API docs: /api/docs" 200
+	# everything goes to the app: /api/*, /health, and the web app files at / (once there is a web app)
+	reverse_proxy app:8000 {
+		transport http {
+			response_header_timeout 600s
+		}
 	}
 }
