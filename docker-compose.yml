@@ -1,0 +1,50 @@
+# LectureKit, everything in Docker. From this folder:   docker compose up -d --build
+#
+#   caddy  (ports 80/443)  HTTPS and routing:  /api/* and /health -> app,  everything else -> the web app (later)
+#   app    (not exposed)   the FastAPI server + worker + ffmpeg, Tesseract, LibreOffice, Whisper;
+#                          its database is the SQLite file data/server.db (no separate database container)
+#
+# Adding the web app later = uncomment the `web` service below and the `reverse_proxy web:80` line in Caddyfile.
+name: lecturekit
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/app.Dockerfile
+    image: lecturekit-app
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+    volumes:
+      - ./data:/data              # database, uploads, results, cache, logs: back this folder up
+    restart: unless-stopped
+    expose:
+      - "8000"
+
+  caddy:
+    image: caddy:2
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+
+  # web:                                   # the web app as static files in a tiny nginx container
+  #   build:
+  #     context: ./web                     # a folder with its own Dockerfile that builds and serves dist/
+  #   restart: unless-stopped
+  #   expose:
+  #     - "80"
+
+volumes:
+  caddy_data:
+  caddy_config:

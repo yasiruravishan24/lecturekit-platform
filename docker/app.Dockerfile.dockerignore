@@ -1,0 +1,8 @@
+# Allow-list: send only what app.Dockerfile copies. Never lecture media, data, logs, keys or virtual environments.
+*
+!lecturekit/requirements.txt
+!lecturekit/lecturekit
+!lecturekit-server/requirements.txt
+!lecturekit-server/server
+**/__pycache__
+**/*.pyc

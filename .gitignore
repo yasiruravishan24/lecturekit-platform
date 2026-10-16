@@ -1,0 +1,12 @@
+# This repository holds only the files that start LectureKit. The two code repositories are cloned inside it.
+lecturekit/
+lecturekit-server/
+data/
+.env
+.DS_Store
+
+# thesis and planning documents: not part of the deployment (remove a line to track that file)
+CHUNKED_RECORDING_LATER.md
+LECTUREKIT_PLAN.md
+SERVER_PLAN.md
+TESTING.md
