@@ -4,5 +4,13 @@
 !lecturekit/lecturekit
 !lecturekit-server/requirements.txt
 !lecturekit-server/server
+!lecturekit-web/package.json
+!lecturekit-web/package-lock.json
+!lecturekit-web/index.html
+!lecturekit-web/vite.config.js
+!lecturekit-web/public
+!lecturekit-web/src
 **/__pycache__
+lecturekit-web/node_modules
+lecturekit-web/dist
 **/*.pyc

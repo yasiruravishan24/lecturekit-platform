@@ -17,7 +17,7 @@ Everything that must survive a restart (database, recordings, slides, transcript
 1. Start Docker Desktop and wait until it says it is running.
 2. In this folder:
    ```bash
-   ./setup.sh                  # clones the two code repositories if they are missing, creates data/ and .env
+   ./setup.sh                  # clones the three code repositories if they are missing, creates data/ and .env
    nano .env                   # ANTHROPIC_API_KEY, JWT_SECRET (openssl rand -hex 32), and for a local test:
    #   DOMAIN=localhost
    #   HTTP_PORT=8080
@@ -223,10 +223,7 @@ Owner commands: `docker compose exec app python -m server.admin list-users` and
 
 `scripts/api_check.py` covers most of these automatically (see section A and B8).
 
-## H. Adding the web app later
+## H. The web app
 
-1. Put the web app in `lecturekit-server/web/`.
-2. In `docker/app.Dockerfile` uncomment the Node build stage at the top and the `COPY --from=web` line, and in
-   `docker/app.Dockerfile.dockerignore` allow `lecturekit-server/web` (without `node_modules`).
-3. `docker compose build app && docker compose up -d`. The server then serves the app at `/` and the API stays at `/api`: one address,
-   one certificate, no CORS. The database and the data stay as they are.
+The web app is in `lecturekit-web/` and is built inside the image (the first stage of `docker/app.Dockerfile`), so `docker compose up -d --build` is all that is needed.
+The server serves it at `/` and keeps the API at `/api`: one address, one certificate, no CORS. To work on it, see `lecturekit-web/README.md`.

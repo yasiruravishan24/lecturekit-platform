@@ -1,6 +1,7 @@
-# This repository holds only the files that start LectureKit. The two code repositories are cloned inside it.
+# This repository holds only the files that start LectureKit. The three code repositories are cloned inside it.
 lecturekit/
 lecturekit-server/
+lecturekit-web/
 data/
 backups/
 .env

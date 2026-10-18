@@ -1,19 +1,20 @@
 # The app image: the FastAPI server + worker with everything the pipeline needs (ffmpeg, Tesseract, LibreOffice,
 # the Whisper model). The database is SQLite: a file (data/server.db) in the /data volume, so no database container.
-# Follows DOCKER_DEPLOYMENT_PLAN.md: one app process, FastAPI serves the web app files itself (once there is a web app).
+# Follows doc/DOCKER_DEPLOYMENT_PLAN.md: one app process, FastAPI serves the web app files itself.
 #
 # Build context = the folder that holds lecturekit/ and lecturekit-server/ side by side (the compose file sets it):
 #   docker build -f docker/app.Dockerfile .
 #
-# ---- stage 1 (add when the web app exists in lecturekit-server/web): build it, Node stays out of the final image ----
-# FROM node:22-slim AS web
-# WORKDIR /web
-# COPY lecturekit-server/web/package.json lecturekit-server/web/package-lock.json ./
-# RUN npm ci
-# COPY lecturekit-server/web/ ./
-# RUN npm run build                                  # output: /web/dist
-# (and allow lecturekit-server/web in docker/app.Dockerfile.dockerignore, and uncomment the COPY --from=web line below)
-#
+# ---- stage 1: build the web app (Node stays out of the final image) ----
+FROM node:22-slim AS web
+WORKDIR /web
+COPY lecturekit-web/package.json lecturekit-web/package-lock.json ./
+RUN npm ci
+COPY lecturekit-web/index.html lecturekit-web/vite.config.js ./
+COPY lecturekit-web/public ./public
+COPY lecturekit-web/src ./src
+RUN npm run build                                  # output: /web/dist
+
 # ---- the app ----
 FROM python:3.12-slim
 
@@ -42,7 +43,7 @@ RUN python -c "from faster_whisper import WhisperModel; WhisperModel('small', de
 
 COPY lecturekit/lecturekit /app/lecturekit
 COPY lecturekit-server/server /app/server
-# COPY --from=web /web/dist /app/web/dist             # uncomment together with stage 1 above
+COPY --from=web /web/dist /app/web/dist
 
 USER app
 EXPOSE 8000

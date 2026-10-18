@@ -2,7 +2,7 @@
 #
 #   caddy  (ports 80/443)  the only part open to the internet: HTTPS certificate, upload limit, forwards to app
 #   app    (not exposed)   one Python process: FastAPI server + job worker (one job at a time) + the lecturekit pipeline
-#                          (Whisper, ffmpeg, Tesseract, LibreOffice) + the built web app files (once there is a web app).
+#                          (Whisper, ffmpeg, Tesseract, LibreOffice) + the built web app files (the web app).
 #                          Its database is the SQLite file data/server.db (no separate database container).
 #
 # Everything that must survive a restart lives in ./data. Secrets live in .env only.
