@@ -95,7 +95,16 @@ cp .env.example .env && chmod 600 .env
 nano .env                                  # DOMAIN, ANTHROPIC_API_KEY, JWT_SECRET (Ctrl+O, Enter, Ctrl+X)
 openssl rand -hex 32                       # use this output as JWT_SECRET
 ```
-In `.env` also set `APP_MEM_LIMIT` below the server's RAM (for example `3g` on a 4 GB server). If your user is not id 1000 (`id -u`):
+In `.env` also set the email settings:
+
+- **Confirmation email (Gmail).** Turn on 2-Step Verification for the Gmail account, then Google Account > Security > App passwords: create one (16 characters).
+  Set `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=587`, `SMTP_USER=<the gmail address>`, `SMTP_PASSWORD=<the app password>`. Gmail allows about 500 emails a day.
+  New accounts get a 6-digit code in this email (valid 10 minutes) and must enter it before they can log in. With `SMTP_HOST` empty the emails are only written to the log (`docker compose logs app`).
+- **Google login (optional).** In Google Cloud Console create a project, then APIs & Services > OAuth consent screen (External), then Credentials > Create credentials >
+  OAuth client ID > Web application. Add your web app's address under Authorised JavaScript origins (the extension needs its own client of type Chrome extension later).
+  Copy the client ID into `GOOGLE_CLIENT_ID`. It is not a secret; with it empty Google login is off.
+
+Also set `APP_MEM_LIMIT` below the server's RAM (for example `3g` on a 4 GB server). If your user is not id 1000 (`id -u`):
 `sudo chown -R 1000:1000 data`.
 
 ### 6. Build and start
@@ -112,17 +121,23 @@ curl https://<your-domain>/health          # {"ok":true,...}: tools present, key
 Caddy gets the certificate by itself the first time (ports 80 and 443 open, the domain pointing at the server).
 
 ### 8. First real use
-1. Register the first account:
+1. Register the first account, then confirm it with the 6-digit code from the email you receive (check spam too):
    ```bash
    curl -X POST https://<your-domain>/api/auth/register -H 'Content-Type: application/json' \
-        -d '{"email":"you@example.com","password":"a long password"}'
+        -d '{"full_name":"Your Name","email":"you@example.com","password":"a long password","accept_terms":true}'
+   curl -X POST https://<your-domain>/api/auth/verify-email -H 'Content-Type: application/json' \
+        -d '{"email":"you@example.com","code":"123456"}'
    ```
-2. From your own computer run the checks against the server with the 14-minute test lecture and its slides (this also checks the stage progress,
+   If no email arrives: `docker compose logs app` shows why (usually a wrong app password), and
+   `docker compose exec app python -m server.admin verify-email you@example.com` confirms the address by hand.
+2. The checks create their own test accounts and confirm them with `--verify-cmd` (the email code is never in an API reply), which runs the admin
+   command on the server over SSH. From your own computer run the checks against the server with the 14-minute test lecture and its slides (this also checks the stage progress,
    notes, quiz, live chunks and deleting):
    ```bash
    cd lecturekit-server
    .venv/bin/python scripts/api_check.py --url https://<your-domain> \
-        --recording lecture14.mp4 --slides slides.pdf --clip-seconds 840
+        --recording lecture14.mp4 --slides slides.pdf --clip-seconds 840 \
+        --verify-cmd "ssh deploy@<ip> 'cd /opt/lecturekit && docker compose exec -T app python -m server.admin verify-email {email}'"
    .venv/bin/python scripts/smoke.py --url https://<your-domain> --recording lecture14.mp4 --slides slides.pdf
    ```
    The smoke test prints each stage and the time. For the live path add `--live --end 600` (run it with `PYTHONPATH=../lecturekit`).
@@ -169,7 +184,7 @@ A job running during the restart is marked `failed: server_restarted`; the user 
 - [ ] CORS allows only the web origin and the extension origin (`WEB_ORIGIN`, `EXTENSION_ORIGIN`; same-origin needs neither)
 - [ ] upload limits are enforced by Caddy (total size) and by the server (type and size per kind)
 - [ ] the API key never goes to a client; the Claude API receives transcript and slide text only, never audio or video
-- [ ] registration is open: anyone who knows the address can create an account (5 lectures per day each), so share the address only with the people you want as users
+- [ ] registration is open but needs a working email address (confirmed by an emailed code); each account gets 5 lectures per day (`DAILY_LIMIT`)
 - [ ] the per-user daily limit (`DAILY_LIMIT`, default 5) protects your Claude credit; keep auto-reload off in the Anthropic console
 
 Owner commands: `docker compose exec app python -m server.admin list-users` and
@@ -196,7 +211,8 @@ Owner commands: `docker compose exec app python -m server.admin list-users` and
 
 - [ ] `docker compose up -d` works from a clean server in under 15 minutes following this guide
 - [ ] `https://<domain>/health` ok; certificate valid
-- [ ] register a new account works
+- [ ] register a new account: the email with the 6-digit code arrives, the code confirms it, login works only after that
+- [ ] the verification email and the welcome email arrive and look right
 - [ ] the 14-minute lecture with slides: stage progress shown, notes and quiz appear, speed recorded (section B9)
 - [ ] quiz answers not visible before submitting; an attempt shows score and explanations
 - [ ] a second account cannot see the first account's data
