@@ -171,7 +171,7 @@ A job running during the restart is marked `failed: server_restarted`; the user 
   into `backups/lecturekit-<date>.tgz`. Copy that file to another machine: `scp deploy@<ip>:/opt/lecturekit/backups/*.tgz .`
   Daily on the server (`crontab -e`): `0 3 * * * cd /opt/lecturekit && ./backup.sh && find backups -name '*.tgz' -mtime +7 -delete`
 - **Restore:** unpack the `.tgz` in a fresh folder next to `docker-compose.yml`, run `mv data/backup.db data/server.db`, then `docker compose up -d`.
-- **Disk:** the server removes the large recording `KEEP_MEDIA_DAYS` (default 7) days after a lecture is done; notes, quiz and transcript stay.
+- **Disk:** after the notes are ready the server makes a replay copy (faces blurred, at most 720 p) and deletes the original upload; the replay and the screenshots stay until the owner deletes the lecture, up to `MAX_STORAGE_GB` (default 10) per user. Plan the disk for that: about 0.3 to 0.7 GB per hour of video, much less for audio. The picture and replay work runs in a second lane at low CPU priority (`VISUALS_ENABLED=0` switches it off).
   Check `df -h` weekly during the viva period.
 - **Logs:** `data/logs` (lecturekit logs and one line per request, no bodies and no secrets); `docker compose logs -f app` for live output.
 - **Restart:** both services use `restart: unless-stopped`, so they come back after a server reboot.
@@ -205,7 +205,7 @@ Owner commands: `docker compose exec app python -m server.admin list-users` and
 | A lecture shows "The AI service failed" | missing key, no credit, rate limit or no outgoing network: check `.env` and the Anthropic console, then retry the lecture |
 | "ffmpeg could not read this file" | the recording is damaged or has no audio track |
 | Out of memory during Whisper | server too small or `APP_MEM_LIMIT` too low: use 8 GB, or `LK_WHISPER_SIZE=base` |
-| Disk full | old recordings: lower `KEEP_MEDIA_DAYS`, delete old sessions, `docker system prune` (unused images), enlarge the disk |
+| Disk full | users' replays: ask them to delete old lectures (Settings shows each user's storage), lower `MAX_STORAGE_GB`, `docker system prune` (unused images), enlarge the disk |
 | Permission denied on `data/` | `sudo chown -R 1000:1000 data` |
 | PowerPoint or Word slides are refused | the image was built with `WITH_LIBREOFFICE=0`; upload the slides as PDF or rebuild with it set to 1 |
 | "database is locked" on a Mac | SQLite on Docker Desktop's shared folders can misbehave; a Linux server does not (it worked in the local tests) |

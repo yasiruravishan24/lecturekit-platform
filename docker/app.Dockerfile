@@ -41,6 +41,10 @@ RUN pip install -r /tmp/lecturekit-requirements.txt -r /tmp/server-requirements.
 RUN python -c "from faster_whisper import WhisperModel; WhisperModel('small', device='cpu', compute_type='int8')" \
     && chmod -R a+rX /opt/hf
 
+# the face detector (OpenCV YuNet, 230 KB) used to blur faces in pictures and replays; checked against its known SHA-256
+RUN python -c "import hashlib, urllib.request; u='https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx'; d=urllib.request.urlopen(u, timeout=60).read(); assert hashlib.sha256(d).hexdigest()=='8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4', 'face model checksum differs'; import os; os.makedirs('/opt/models', exist_ok=True); open('/opt/models/face_detection_yunet_2023mar.onnx','wb').write(d)" \
+    && chmod -R a+rX /opt/models
+
 COPY lecturekit/lecturekit /app/lecturekit
 COPY lecturekit-server/server /app/server
 COPY --from=web /web/dist /app/web/dist
