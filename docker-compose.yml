@@ -1,4 +1,4 @@
-# LectureKit, everything in Docker (DOCKER_DEPLOYMENT_PLAN.md). From this folder:   docker compose up -d --build
+# LectureKit, everything in Docker (doc/DOCKER_DEPLOYMENT_PLAN.md). From this folder:   docker compose up -d --build
 #
 #   caddy  (ports 80/443)  the only part open to the internet: HTTPS certificate, upload limit, forwards to app
 #   app    (not exposed)   one Python process: FastAPI server + job worker (one job at a time) + the lecturekit pipeline

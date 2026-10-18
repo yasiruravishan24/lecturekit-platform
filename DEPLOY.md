@@ -1,6 +1,6 @@
 # DEPLOY.md: running LectureKit with Docker (written for a beginner)
 
-Follows `DOCKER_DEPLOYMENT_PLAN.md`. One rented Linux server runs Docker Compose with two containers:
+Follows `doc/DOCKER_DEPLOYMENT_PLAN.md`. One rented Linux server runs Docker Compose with two containers:
 
 | Container | What it does |
 |---|---|

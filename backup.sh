@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Consistent backup of everything that matters (DOCKER_DEPLOYMENT_PLAN.md section 12). Run from this folder, with the stack running:
+# Consistent backup of everything that matters. Run from this folder, with the stack running:
 #   ./backup.sh
 # 1. asks SQLite for a consistent copy of the database (a plain file copy of a live database can be inconsistent),
 # 2. packs data/ (uploads, transcripts, notes, logs) with that copy into backups/lecturekit-<date>.tgz.

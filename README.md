@@ -8,7 +8,7 @@ docker/              the app image (Dockerfile)
 Caddyfile            HTTPS, upload size limit, forwards everything to app
 .env.example         the settings you fill in (the real .env is never committed)
 setup.sh             clones the two code repositories below, creates data/ and .env
-DEPLOY.md            step-by-step guide: test on your computer, then the internet (follows DOCKER_DEPLOYMENT_PLAN.md)
+DEPLOY.md            step-by-step guide: test on your computer, then the internet (follows doc/DOCKER_DEPLOYMENT_PLAN.md)
 backup.sh            consistent backup of the database and data/ into backups/
 data/                runtime data: the SQLite database, uploads, notes, logs (not committed: back it up)
 lecturekit/          the pipeline (own repository: github.com/yasiruravishan24/lecturekit)
