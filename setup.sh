@@ -11,7 +11,7 @@ fetch https://github.com/yasiruravishan24/lecturekit.git lecturekit
 fetch https://github.com/yasiruravishan24/lecturekit-server.git lecturekit-server
 fetch https://github.com/yasiruravishan24/lecturekit-web.git lecturekit-web
 
-mkdir -p data                      # created by you, so the container (user id 1000) can write to it
+mkdir -p data certs               # created by you, so the container (user id 1000) can write to it
 if [ ! -f .env ]; then
   cp .env.example .env
   chmod 600 .env

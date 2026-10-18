@@ -3,6 +3,10 @@
 {$DOMAIN} {
 	encode gzip
 
+	# Local testing with your own certificate files (./make-local-cert.sh writes certs/tls.caddy). On a real server certs/ is
+	# empty, nothing is imported and Caddy gets the Let's Encrypt certificate by itself.
+	import /certs/*.caddy
+
 	# must be larger than MAX_RECORDING_MB in .env (default 1500), a little more for the form data around the file
 	request_body {
 		max_size 1600MB

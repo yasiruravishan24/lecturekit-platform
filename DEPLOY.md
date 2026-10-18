@@ -34,6 +34,9 @@ Everything that must survive a restart (database, recordings, slides, transcript
        --recording ../lecturekit/data/L02/media.mp4 --slides ../lecturekit/data/L02/slides.pdf
    ```
    Without `--recording` only the checks that need no AI run. Interactive API docs: `https://localhost:8443/api/docs`.
+   To open the web app at `https://localhost:8443/` without the browser's "Not Secure" warning: `brew install mkcert`, then `./make-local-cert.sh` once
+   (it makes the certificate files in `certs/`, trusts them on your computer, asks for your password, and restarts Caddy), then restart the browser.
+   On a real server this is not needed: `certs/` stays empty and Caddy gets a Let's Encrypt certificate for your domain by itself (what certbot does).
 4. Stop: `docker compose down` (the data stays in `data/`).
 
 ---

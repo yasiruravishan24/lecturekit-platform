@@ -8,3 +8,5 @@ backups/
 .DS_Store
 
 doc/
+
+certs/

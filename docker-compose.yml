@@ -41,6 +41,7 @@ services:
       DOMAIN: ${DOMAIN:?set DOMAIN in .env}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./certs:/certs:ro          # local certificate files (empty on a real server)
       - caddy_data:/data           # the certificates: do not delete this volume
       - caddy_config:/config
     restart: unless-stopped
