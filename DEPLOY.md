@@ -187,8 +187,8 @@ A job running during the restart is marked `failed: server_restarted`; the user 
 - [ ] CORS allows only the web origin and the extension origin (`WEB_ORIGIN`, `EXTENSION_ORIGIN`; same-origin needs neither)
 - [ ] upload limits are enforced by Caddy (total size) and by the server (type and size per kind)
 - [ ] the API key never goes to a client; the Claude API receives transcript and slide text only, never audio or video
-- [ ] registration is open but needs a working email address (confirmed by an emailed code); each account gets 5 lectures per day (`DAILY_LIMIT`)
-- [ ] the per-user daily limit (`DAILY_LIMIT`, default 5) protects your Claude credit; keep auto-reload off in the Anthropic console
+- [ ] registration is open but needs a working email address (confirmed by an emailed code); each account gets 10 lectures per day (`DAILY_LIMIT`); `APP_ENV` must NOT be `local` on a real server, because `local` switches the daily limit off
+- [ ] the per-user daily limit (`DAILY_LIMIT`, default 10) protects your Claude credit; keep auto-reload off in the Anthropic console
 
 Owner commands: `docker compose exec app python -m server.admin list-users` and
 `docker compose exec app python -m server.admin set-password someone@example.com` (forgotten password).
