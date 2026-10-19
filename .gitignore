@@ -2,6 +2,7 @@
 lecturekit/
 lecturekit-server/
 lecturekit-web/
+lecturekit-extension/
 data/
 backups/
 .env
