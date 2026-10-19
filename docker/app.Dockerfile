@@ -18,7 +18,7 @@ RUN npm run build                                  # output: /web/dist
 # ---- the app ----
 FROM python:3.12-slim
 
-ENV LK_QUIZ_CODE_BLOCKS=1 \
+ENV LK_QUIZ_CODE_BLOCKS=1 LK_QUIZ_REVIEW=1 \
     PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 DEBIAN_FRONTEND=noninteractive \
     HF_HOME=/opt/hf HOME=/home/app DATA_DIR=/data WEB_DIST=/app/web/dist
 

@@ -11,3 +11,4 @@ backups/
 doc/
 
 certs/
+.cache/
